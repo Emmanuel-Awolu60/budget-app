@@ -1,14 +1,31 @@
-export function saveToken(token) {
-  localStorage.setItem("token", token);
+// src/utils/auth.js
+
+// Save token (localStorage if remember, else sessionStorage)
+export function saveToken(token, remember = true) {
+  try {
+    if (remember) {
+      localStorage.setItem("token", token);
+    } else {
+      sessionStorage.setItem("token", token);
+    }
+  } catch {}
 }
-export const setToken = saveToken;
 
 export function getToken() {
-  return localStorage.getItem("token");
+  try {
+    return localStorage.getItem("token") || sessionStorage.getItem("token");
+  } catch {
+    return null;
+  }
 }
+
 export function clearToken() {
-  localStorage.removeItem("token");
+  try {
+    localStorage.removeItem("token");
+    sessionStorage.removeItem("token");
+  } catch {}
 }
+
 export function isLoggedIn() {
-  return !!getToken();
+  return getToken() !== null;
 }

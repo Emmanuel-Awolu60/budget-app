@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { LogOut, Settings, User } from "lucide-react";
 // import API from "../utils/api";
-import { setToken } from "../utils/auth";
+// import { setToken } from "../utils/auth";
 import { getToken, clearToken } from "../utils/auth";
 import Spinner from "../components/Spinner";
 
