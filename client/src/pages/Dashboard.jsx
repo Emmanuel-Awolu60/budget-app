@@ -1,15 +1,21 @@
+// src/pages/Dashboard.jsx
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { LogOut, Settings, User } from "lucide-react";
-// import API from "../utils/api";
-// import { setToken } from "../utils/auth";
+import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { LogOut, Settings, User, PlusCircle, X } from "lucide-react";
+import API from "../utils/api";
 import { getToken, clearToken } from "../utils/auth";
 import Spinner from "../components/Spinner";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ income: 0, expenses: 0, balance: 0 });
+
+  // modal state
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showTransactionModal, setShowTransactionModal] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -19,20 +25,21 @@ export default function Dashboard() {
         });
         setUser(data.user);
 
-        // Demo: you’d fetch categories/transactions here
+        // Demo stats
         setStats({ income: 1500, expenses: 600, balance: 900 });
       } catch (err) {
-        console.error(err);
+        console.error("Auth fetch error:", err);
+        navigate("/login", { replace: true });
       } finally {
         setLoading(false);
       }
     }
     fetchData();
-  }, []);
+  }, [navigate]);
 
   function logout() {
     clearToken();
-    window.location.href = "/login";
+    navigate("/login", { replace: true });
   }
 
   if (loading) {
@@ -147,8 +154,11 @@ export default function Dashboard() {
                 Shopping <span>$150</span>
               </li>
             </ul>
-            <button className="mt-4 w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium">
-              + Add Category
+            <button
+              onClick={() => setShowCategoryModal(true)}
+              className="mt-4 w-full py-2 flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium"
+            >
+              <PlusCircle size={18} /> Add Category
             </button>
           </motion.div>
 
@@ -171,12 +181,110 @@ export default function Dashboard() {
                 <span>Bus Ticket</span> <span>- $15</span>
               </li>
             </ul>
-            <button className="mt-4 w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium">
-              + Add Transaction
+            <button
+              onClick={() => setShowTransactionModal(true)}
+              className="mt-4 w-full py-2 flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium"
+            >
+              <PlusCircle size={18} /> Add Transaction
             </button>
           </motion.div>
         </div>
       </main>
+
+      {/* Category Modal */}
+      <AnimatePresence>
+        {showCategoryModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-xl"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Add Category</h3>
+                <button
+                  onClick={() => setShowCategoryModal(false)}
+                  className="p-1 hover:bg-slate-700 rounded-lg"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <form className="space-y-4">
+                <input
+                  type="text"
+                  placeholder="Category Name"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  type="submit"
+                  className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium"
+                >
+                  Save
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Transaction Modal */}
+      <AnimatePresence>
+        {showTransactionModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-xl"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Add Transaction</h3>
+                <button
+                  onClick={() => setShowTransactionModal(false)}
+                  className="p-1 hover:bg-slate-700 rounded-lg"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <form className="space-y-4">
+                <input
+                  type="text"
+                  placeholder="Description"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <input
+                  type="number"
+                  placeholder="Amount"
+                  className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <select className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">Select Category</option>
+                  <option value="food">Food</option>
+                  <option value="transport">Transport</option>
+                  <option value="shopping">Shopping</option>
+                </select>
+                <button
+                  type="submit"
+                  className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium"
+                >
+                  Save
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
