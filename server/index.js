@@ -3,14 +3,13 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 
-// const authRoutes = require("./routes/auth");
+const authRoutes = require("./routes/auth");
 const categoriesRoutes = require("./routes/categories");
 const transactionsRoutes = require("./routes/transactions");
 
-const authRoutes = require("./routes/auth");
-// app.use("/api/auth", authRoutes);
+const app = express(); // ✅ declare first
 
-const app = express();
+// Middleware
 app.use(cors());
 app.use(express.json());
 
@@ -32,10 +31,7 @@ if (!MONGODB_URI) {
 }
 
 mongoose
-  .connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(MONGODB_URI) // ✅ no need for deprecated options
   .then(() => {
     console.log("Connected to MongoDB");
     app.listen(PORT, () => {
