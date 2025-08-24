@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 
 const User = require("../models/User");
 const authMiddleware = require("../middleware/authMiddleware");
@@ -9,10 +10,20 @@ const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  console.error("JWT_SECRET not set in .env");
+  console.error("❌ JWT_SECRET not set in .env");
   process.exit(1);
 }
-// Register
+
+// Rate limit auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+router.use(authLimiter);
+
+// --- Register
 router.post("/register", async (req, res) => {
   try {
     const { name = "", email, password } = req.body;
@@ -26,18 +37,25 @@ router.post("/register", async (req, res) => {
       return res.status(409).json({ message: "User already exists" });
 
     const passwordHash = await bcrypt.hash(password, 10);
-
     const user = new User({ name, email, passwordHash });
     await user.save();
 
-    res.status(201).json({ message: "User registered successfully" });
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    return res.status(201).json({
+      message: "User registered successfully",
+      user: { id: user._id, name: user.name, email: user.email },
+      token,
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Register error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-// Login
+// --- Login
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -49,24 +67,28 @@ router.post("/login", async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
-    // This is line 66 in your logs
     const match = await bcrypt.compare(password, user.passwordHash);
     if (!match) return res.status(401).json({ message: "Invalid credentials" });
 
-    res.json({ message: "Login success", user });
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    return res.json({
+      message: "Login success",
+      user: { id: user._id, name: user.name, email: user.email },
+      token,
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Login error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-console.log("Password from client:", password);
-console.log("Password hash from DB:", user.passwordHash);
-
-// Get current user
+// --- Current user
 router.get("/me", authMiddleware, async (req, res) => {
-  const user = await User.findById(req.userId).select("-password");
-  res.json({ user });
+  const user = await User.findById(req.userId).select("-passwordHash");
+  return res.json({ user });
 });
 
 module.exports = router;
