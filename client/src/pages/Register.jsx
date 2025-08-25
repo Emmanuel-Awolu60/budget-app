@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import toast from "react-hot-toast";
 import API from "../utils/api";
 import { saveToken } from "../utils/auth";
 import AuthArt from "../components/AuthArt";
@@ -52,18 +53,19 @@ export default function Register() {
       });
       saveToken(data.token);
 
-      // optional: save user info
       if (data.user) {
         try {
           localStorage.setItem("user", JSON.stringify(data.user));
         } catch {}
       }
 
+      toast.success("Account created 🎉");
       navigate("/dashboard");
     } catch (err) {
       const msg =
         err?.response?.data?.message || "Registration failed. Try again.";
       setGlobalErr(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

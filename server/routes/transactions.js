@@ -41,4 +41,38 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
+// Update transaction
+router.put("/:id", authMiddleware, async (req, res) => {
+  try {
+    const { description, amount, categoryId } = req.body;
+    const updated = await Transaction.findOneAndUpdate(
+      { _id: req.params.id, userId: req.userId },
+      { description, amount, categoryId },
+      { new: true }
+    );
+    if (!updated)
+      return res.status(404).json({ message: "Transaction not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Delete transaction
+router.delete("/:id", authMiddleware, async (req, res) => {
+  try {
+    const deleted = await Transaction.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId,
+    });
+    if (!deleted)
+      return res.status(404).json({ message: "Transaction not found" });
+    res.json({ message: "Transaction deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 module.exports = router;

@@ -31,4 +31,38 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
+// Update category
+router.put("/:id", authMiddleware, async (req, res) => {
+  try {
+    const { name } = req.body;
+    const updated = await Category.findOneAndUpdate(
+      { _id: req.params.id, userId: req.userId },
+      { name },
+      { new: true }
+    );
+    if (!updated)
+      return res.status(404).json({ message: "Category not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Delete category
+router.delete("/:id", authMiddleware, async (req, res) => {
+  try {
+    const deleted = await Category.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId,
+    });
+    if (!deleted)
+      return res.status(404).json({ message: "Category not found" });
+    res.json({ message: "Category deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 module.exports = router;

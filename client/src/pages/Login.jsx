@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import toast from "react-hot-toast";
 import API from "../utils/api";
 import { saveToken } from "../utils/auth";
 import AuthArt from "../components/AuthArt";
@@ -38,22 +39,21 @@ export default function Login() {
 
     try {
       const { data } = await API.post("/auth/login", { email, password });
-      // Save token (honor "remember me")
       saveToken(data.token, remember);
 
-      // optional: save user info too
       if (data.user) {
         try {
           localStorage.setItem("user", JSON.stringify(data.user));
         } catch {}
       }
 
-      // small success animation delay then redirect
+      toast.success("Login successful 🎉");
       navigate("/dashboard");
     } catch (err) {
       const msg =
         err?.response?.data?.message || "Login failed. Please try again.";
       setGlobalErr(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -112,9 +112,6 @@ export default function Login() {
                     type="button"
                     onClick={() => setShowPassword((s) => !s)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-300 hover:text-white"
-                    aria-label={
-                      showPassword ? "Hide password" : "Show password"
-                    }
                   >
                     {showPassword ? "Hide" : "Show"}
                   </button>

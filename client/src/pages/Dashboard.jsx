@@ -1,376 +1,515 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { LogOut, Settings, User, PlusCircle, X } from "lucide-react";
+// src/pages/Dashboard.jsx
+import { useEffect, useState, useMemo } from "react";
+import { motion } from "framer-motion";
+import { PlusCircle, Pencil, Trash2 } from "lucide-react";
 import API from "../utils/api";
-import { getToken, clearToken } from "../utils/auth";
+import { getToken } from "../utils/auth";
 import Spinner from "../components/Spinner";
+import toast from "react-hot-toast";
+import ConfirmModal from "../components/ConfirmModal";
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ income: 0, expenses: 0, balance: 0 });
-
-  // data
+  const [user, setUser] = useState(null);
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
 
-  // modal state
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [showTransactionModal, setShowTransactionModal] = useState(false);
-
-  // form state
-  const [categoryName, setCategoryName] = useState("");
-  const [transaction, setTransaction] = useState({
-    description: "",
-    amount: "",
-    categoryId: "",
+  // modals
+  const [categoryModal, setCategoryModal] = useState({
+    open: false,
+    mode: "add",
+    current: null,
+    name: "",
+  });
+  const [txModal, setTxModal] = useState({
+    open: false,
+    mode: "add",
+    current: null,
+    form: { description: "", amount: "", categoryId: "" },
   });
 
+  // confirm
+  const [confirm, setConfirm] = useState({
+    open: false,
+    id: null,
+    type: null,
+    text: "",
+  });
+
+  const stats = useMemo(() => {
+    const income = transactions
+      .filter((t) => t.amount > 0)
+      .reduce((a, b) => a + b.amount, 0);
+    const expenses = transactions
+      .filter((t) => t.amount < 0)
+      .reduce((a, b) => a + Math.abs(b.amount), 0);
+    return { income, expenses, balance: income - expenses };
+  }, [transactions]);
+
   useEffect(() => {
-    async function fetchData() {
+    async function boot() {
       try {
         const headers = { Authorization: `Bearer ${getToken()}` };
-
-        // user
-        const { data } = await API.get("/auth/me", { headers });
-        setUser(data.user);
-
-        // categories
-        const catRes = await API.get("/categories", { headers });
+        const [meRes, catRes, txRes] = await Promise.all([
+          API.get("/auth/me", { headers }),
+          API.get("/categories", { headers }),
+          API.get("/transactions", { headers }),
+        ]);
+        setUser(meRes.data.user);
         setCategories(catRes.data);
-
-        // transactions
-        const txRes = await API.get("/transactions", { headers });
         setTransactions(txRes.data);
-
-        // demo stats calculation
-        const income = txRes.data
-          .filter((t) => t.amount > 0)
-          .reduce((a, b) => a + b.amount, 0);
-        const expenses = txRes.data
-          .filter((t) => t.amount < 0)
-          .reduce((a, b) => a + Math.abs(b.amount), 0);
-        const balance = income - expenses;
-
-        setStats({ income, expenses, balance });
       } catch (err) {
-        console.error("Auth fetch error:", err);
-        navigate("/login", { replace: true });
+        console.error(err);
+        toast.error("Session expired. Redirecting to login.");
       } finally {
         setLoading(false);
       }
     }
-    fetchData();
-  }, [navigate]);
+    boot();
+  }, []);
 
-  function logout() {
-    clearToken();
-    navigate("/login", { replace: true });
+  // Category handlers
+  function openAddCategory() {
+    setCategoryModal({ open: true, mode: "add", current: null, name: "" });
   }
-
-  async function handleAddCategory(e) {
+  function openEditCategory(c) {
+    setCategoryModal({ open: true, mode: "edit", current: c, name: c.name });
+  }
+  async function submitCategory(e) {
     e.preventDefault();
+    const headers = { Authorization: `Bearer ${getToken()}` };
+    if (!categoryModal.name.trim()) return toast.error("Name is required");
     try {
-      const headers = { Authorization: `Bearer ${getToken()}` };
-      const res = await API.post(
-        "/categories",
-        { name: categoryName },
-        { headers }
-      );
-      setCategories([...categories, res.data]);
-      setCategoryName("");
-      setShowCategoryModal(false);
+      if (categoryModal.mode === "add") {
+        const res = await API.post(
+          "/categories",
+          { name: categoryModal.name },
+          { headers }
+        );
+        setCategories((s) => [...s, res.data]);
+        toast.success("Category added");
+      } else {
+        const id = categoryModal.current._id;
+        const res = await API.put(
+          `/categories/${id}`,
+          { name: categoryModal.name },
+          { headers }
+        );
+        setCategories((s) => s.map((x) => (x._id === id ? res.data : x)));
+        toast.success("Category updated");
+      }
+      setCategoryModal({ open: false, mode: "add", current: null, name: "" });
     } catch (err) {
-      console.error("Add category error:", err);
+      console.error(err);
+      toast.error("Failed to save category");
+    }
+  }
+  function requestDeleteCategory(id, name) {
+    setConfirm({
+      open: true,
+      id,
+      type: "category",
+      text: `Delete category "${name}"? This cannot be undone.`,
+    });
+  }
+  async function confirmDeleteCategory() {
+    const id = confirm.id;
+    const headers = { Authorization: `Bearer ${getToken()}` };
+    try {
+      await API.delete(`/categories/${id}`, { headers });
+      setCategories((s) => s.filter((c) => c._id !== id));
+      toast.success("Category deleted");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to delete category");
+    } finally {
+      setConfirm({ open: false, id: null, type: null, text: "" });
     }
   }
 
-  async function handleAddTransaction(e) {
+  // Transaction handlers
+  function openAddTx() {
+    setTxModal({
+      open: true,
+      mode: "add",
+      current: null,
+      form: { description: "", amount: "", categoryId: "" },
+    });
+  }
+  function openEditTx(tx) {
+    setTxModal({
+      open: true,
+      mode: "edit",
+      current: tx,
+      form: {
+        description: tx.description,
+        amount: tx.amount,
+        categoryId: tx.categoryId?._id || tx.categoryId || "",
+      },
+    });
+  }
+  async function submitTx(e) {
     e.preventDefault();
+    const headers = { Authorization: `Bearer ${getToken()}` };
+    const payload = {
+      description: txModal.form.description,
+      amount: Number(txModal.form.amount),
+      categoryId: txModal.form.categoryId || null,
+    };
+    if (!payload.description) return toast.error("Description required");
+    if (isNaN(payload.amount)) return toast.error("Valid amount required");
     try {
-      const headers = { Authorization: `Bearer ${getToken()}` };
-      const res = await API.post("/transactions", transaction, { headers });
-      setTransactions([...transactions, res.data]);
-      setTransaction({ description: "", amount: "", categoryId: "" });
-      setShowTransactionModal(false);
+      if (txModal.mode === "add") {
+        const res = await API.post("/transactions", payload, { headers });
+        setTransactions((s) => [...s, res.data]);
+        toast.success("Transaction added");
+      } else {
+        const id = txModal.current._id;
+        const res = await API.put(`/transactions/${id}`, payload, { headers });
+        setTransactions((s) => s.map((t) => (t._id === id ? res.data : t)));
+        toast.success("Transaction updated");
+      }
+      setTxModal({
+        open: false,
+        mode: "add",
+        current: null,
+        form: { description: "", amount: "", categoryId: "" },
+      });
     } catch (err) {
-      console.error("Add transaction error:", err);
+      console.error(err);
+      toast.error("Failed to save transaction");
+    }
+  }
+  function requestDeleteTx(id, description) {
+    setConfirm({
+      open: true,
+      id,
+      type: "transaction",
+      text: `Delete transaction "${description}"? This cannot be undone.`,
+    });
+  }
+  async function confirmDeleteTx() {
+    const id = confirm.id;
+    const headers = { Authorization: `Bearer ${getToken()}` };
+    try {
+      await API.delete(`/transactions/${id}`, { headers });
+      setTransactions((s) => s.filter((t) => t._id !== id));
+      toast.success("Transaction deleted");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to delete transaction");
+    } finally {
+      setConfirm({ open: false, id: null, type: null, text: "" });
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+      <div className="min-h-screen flex items-center justify-center">
         <Spinner className="text-indigo-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-900 text-white">
-      {/* Sidebar */}
-      <aside className="w-64 bg-slate-800/60 border-r border-white/10 backdrop-blur-xl flex flex-col">
-        <div className="p-6 text-2xl font-bold bg-gradient-to-r from-indigo-500 to-blue-600 text-transparent bg-clip-text">
-          BudgetX
-        </div>
-        <nav className="flex-1 px-4 space-y-2">
-          <a className="block rounded-lg px-4 py-2 bg-slate-700/40 text-indigo-400 font-semibold">
-            Dashboard
-          </a>
-          <a className="block rounded-lg px-4 py-2 hover:bg-slate-700/30">
-            Categories
-          </a>
-          <a className="block rounded-lg px-4 py-2 hover:bg-slate-700/30">
-            Transactions
-          </a>
-          <a className="block rounded-lg px-4 py-2 hover:bg-slate-700/30">
-            Reports
-          </a>
-        </nav>
-        <div className="p-4 border-t border-white/10">
-          <button
-            onClick={logout}
-            className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300"
-          >
-            <LogOut size={16} /> Logout
-          </button>
-        </div>
-      </aside>
+    <>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-extrabold">Welcome back, {user?.name}</h1>
+        <div />
+      </div>
 
-      {/* Main content */}
-      <main className="flex-1 p-8 overflow-y-auto">
-        {/* Top bar */}
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-extrabold">
-            Welcome back, {user?.name}
-          </h1>
-          <div className="flex items-center gap-4">
-            <button className="flex items-center gap-2 px-4 py-2 bg-slate-800/60 rounded-lg border border-white/10 hover:bg-slate-700/40">
-              <User size={18} /> {user?.email}
-            </button>
-            <button className="p-2 rounded-lg bg-slate-800/60 border border-white/10 hover:bg-slate-700/40">
-              <Settings size={18} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-10">
+        {[
+          {
+            label: "Income",
+            value: stats.income,
+            color: "from-emerald-500 to-teal-400",
+          },
+          {
+            label: "Expenses",
+            value: stats.expenses,
+            color: "from-rose-500 to-pink-400",
+          },
+          {
+            label: "Balance",
+            value: stats.balance,
+            color: "from-indigo-500 to-blue-500",
+          },
+        ].map((stat, i) => (
+          <motion.div
+            key={i}
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: i * 0.12 }}
+            className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 shadow-lg backdrop-blur"
+          >
+            <p className="text-slate-400">{stat.label}</p>
+            <p
+              className={`text-2xl md:text-3xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent`}
+            >
+              ${stat.value}
+            </p>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg md:text-xl font-semibold">Categories</h2>
+            <button
+              onClick={openAddCategory}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium"
+            >
+              <PlusCircle size={16} /> Add
             </button>
           </div>
+          <ul className="space-y-2 text-slate-300">
+            {categories.map((c) => (
+              <li key={c._id} className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{c.name}</div>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <button
+                    onClick={() => openEditCategory(c)}
+                    className="px-2 py-1 bg-blue-500/20 hover:bg-blue-500/40 rounded inline-flex items-center gap-1"
+                  >
+                    <Pencil size={14} /> Edit
+                  </button>
+                  <button
+                    onClick={() => requestDeleteCategory(c._id, c.name)}
+                    className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/40 rounded inline-flex items-center gap-1"
+                  >
+                    <Trash2 size={14} /> Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        {/* Stats cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-          {[
-            {
-              label: "Income",
-              value: stats.income,
-              color: "from-emerald-500 to-teal-400",
-            },
-            {
-              label: "Expenses",
-              value: stats.expenses,
-              color: "from-rose-500 to-pink-400",
-            },
-            {
-              label: "Balance",
-              value: stats.balance,
-              color: "from-indigo-500 to-blue-500",
-            },
-          ].map((stat, i) => (
-            <motion.div
-              key={i}
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: i * 0.15 }}
-              className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 shadow-lg backdrop-blur"
-            >
-              <p className="text-slate-400">{stat.label}</p>
-              <p
-                className={`text-3xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent`}
-              >
-                ${stat.value}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Categories & Transactions */}
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Categories */}
-          <motion.div
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 shadow-lg backdrop-blur"
-          >
-            <h2 className="text-xl font-semibold mb-4">Categories</h2>
-            <ul className="space-y-2 text-slate-300">
-              {categories.map((c) => (
-                <li key={c._id} className="flex justify-between">
-                  {c.name} <span>${c.total || 0}</span>
-                </li>
-              ))}
-            </ul>
+        <div className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 shadow-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg md:text-xl font-semibold">
+              Recent Transactions
+            </h2>
             <button
-              onClick={() => setShowCategoryModal(true)}
-              className="mt-4 w-full py-2 flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium"
+              onClick={openAddTx}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium"
             >
-              <PlusCircle size={18} /> Add Category
+              <PlusCircle size={16} /> Add
             </button>
-          </motion.div>
-
-          {/* Transactions */}
-          <motion.div
-            initial={{ x: 20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 shadow-lg backdrop-blur"
-          >
-            <h2 className="text-xl font-semibold mb-4">Recent Transactions</h2>
-            <ul className="space-y-3 text-slate-300">
-              {transactions.map((t) => (
-                <li
-                  key={t._id}
-                  className="flex justify-between border-b border-white/5 pb-2"
-                >
-                  <span>{t.description}</span>
-                  <span
+          </div>
+          <ul className="space-y-3 text-slate-300">
+            {transactions.map((t) => (
+              <li
+                key={t._id}
+                className="flex items-center justify-between border-b border-white/5 pb-2"
+              >
+                <div>
+                  <div className="font-medium">{t.description}</div>
+                  <div className="text-xs text-slate-400">
+                    {t.categoryId?.name || "Uncategorized"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div
                     className={
                       t.amount > 0 ? "text-emerald-400" : "text-rose-400"
                     }
                   >
                     {t.amount > 0 ? "+" : "-"} ${Math.abs(t.amount)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={() => setShowTransactionModal(true)}
-              className="mt-4 w-full py-2 flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium"
-            >
-              <PlusCircle size={18} /> Add Transaction
-            </button>
-          </motion.div>
+                  </div>
+                  <button
+                    onClick={() => openEditTx(t)}
+                    className="px-2 py-1 bg-blue-500/20 hover:bg-blue-500/40 rounded inline-flex items-center gap-1"
+                  >
+                    <Pencil size={14} /> Edit
+                  </button>
+                  <button
+                    onClick={() => requestDeleteTx(t._id, t.description)}
+                    className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/40 rounded inline-flex items-center gap-1"
+                  >
+                    <Trash2 size={14} /> Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
-      </main>
+      </div>
 
-      {/* Category Modal */}
-      <AnimatePresence>
-        {showCategoryModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-xl"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Add Category</h3>
-                <button
-                  onClick={() => setShowCategoryModal(false)}
-                  className="p-1 hover:bg-slate-700 rounded-lg"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <form className="space-y-4" onSubmit={handleAddCategory}>
-                <input
-                  type="text"
-                  value={categoryName}
-                  onChange={(e) => setCategoryName(e.target.value)}
-                  placeholder="Category Name"
-                  className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+      {/* Category modal */}
+      {categoryModal.open && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">
+                {categoryModal.mode === "add"
+                  ? "Add Category"
+                  : "Edit Category"}
+              </h3>
+              <button
+                onClick={() =>
+                  setCategoryModal({
+                    open: false,
+                    mode: "add",
+                    current: null,
+                    name: "",
+                  })
+                }
+                className="p-1 hover:bg-slate-700 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={submitCategory} className="space-y-4">
+              <input
+                type="text"
+                value={categoryModal.name}
+                onChange={(e) =>
+                  setCategoryModal((s) => ({ ...s, name: e.target.value }))
+                }
+                placeholder="Category name"
+                className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <div className="flex gap-2">
                 <button
                   type="submit"
-                  className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium"
+                  className="flex-1 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white"
                 >
-                  Save
+                  {categoryModal.mode === "add" ? "Save" : "Update"}
                 </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Transaction Modal */}
-      <AnimatePresence>
-        {showTransactionModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-xl"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Add Transaction</h3>
                 <button
-                  onClick={() => setShowTransactionModal(false)}
-                  className="p-1 hover:bg-slate-700 rounded-lg"
+                  type="button"
+                  onClick={() =>
+                    setCategoryModal({
+                      open: false,
+                      mode: "add",
+                      current: null,
+                      name: "",
+                    })
+                  }
+                  className="py-2 px-4 rounded bg-slate-700 hover:bg-slate-600"
                 >
-                  <X size={18} />
+                  Cancel
                 </button>
               </div>
-              <form className="space-y-4" onSubmit={handleAddTransaction}>
-                <input
-                  type="text"
-                  value={transaction.description}
-                  onChange={(e) =>
-                    setTransaction({
-                      ...transaction,
-                      description: e.target.value,
-                    })
-                  }
-                  placeholder="Description"
-                  className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <input
-                  type="number"
-                  value={transaction.amount}
-                  onChange={(e) =>
-                    setTransaction({
-                      ...transaction,
-                      amount: Number(e.target.value),
-                    })
-                  }
-                  placeholder="Amount"
-                  className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <select
-                  value={transaction.categoryId}
-                  onChange={(e) =>
-                    setTransaction({
-                      ...transaction,
-                      categoryId: e.target.value,
-                    })
-                  }
-                  className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">Select Category</option>
-                  {categories.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Transaction modal */}
+      {txModal.open && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">
+                {txModal.mode === "add"
+                  ? "Add Transaction"
+                  : "Edit Transaction"}
+              </h3>
+              <button
+                onClick={() =>
+                  setTxModal({
+                    open: false,
+                    mode: "add",
+                    current: null,
+                    form: { description: "", amount: "", categoryId: "" },
+                  })
+                }
+                className="p-1 hover:bg-slate-700 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={submitTx} className="space-y-4">
+              <input
+                type="text"
+                value={txModal.form.description}
+                onChange={(e) =>
+                  setTxModal((s) => ({
+                    ...s,
+                    form: { ...s.form, description: e.target.value },
+                  }))
+                }
+                placeholder="Description"
+                className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <input
+                type="number"
+                step="0.01"
+                value={txModal.form.amount}
+                onChange={(e) =>
+                  setTxModal((s) => ({
+                    ...s,
+                    form: { ...s.form, amount: e.target.value },
+                  }))
+                }
+                placeholder="Amount"
+                className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <select
+                value={txModal.form.categoryId}
+                onChange={(e) =>
+                  setTxModal((s) => ({
+                    ...s,
+                    form: { ...s.form, categoryId: e.target.value },
+                  }))
+                }
+                className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Select Category</option>
+                {categories.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <div className="flex gap-2">
                 <button
                   type="submit"
-                  className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-medium"
+                  className="flex-1 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white"
                 >
-                  Save
+                  {txModal.mode === "add" ? "Save" : "Update"}
                 </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setTxModal({
+                      open: false,
+                      mode: "add",
+                      current: null,
+                      form: { description: "", amount: "", categoryId: "" },
+                    })
+                  }
+                  className="py-2 px-4 rounded bg-slate-700 hover:bg-slate-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm modal */}
+      <ConfirmModal
+        open={confirm.open}
+        title="Please confirm"
+        message={confirm.text}
+        onConfirm={() => {
+          if (confirm.type === "category") confirmDeleteCategory();
+          else if (confirm.type === "transaction") confirmDeleteTx();
+        }}
+        onCancel={() =>
+          setConfirm({ open: false, id: null, type: null, text: "" })
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+      />
+    </>
   );
 }
