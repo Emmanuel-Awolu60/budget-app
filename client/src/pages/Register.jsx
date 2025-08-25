@@ -100,7 +100,7 @@ export default function Register() {
                   className={`mt-1 w-full rounded-xl px-4 py-3 bg-slate-800 border ${
                     fieldErr.name ? "border-rose-500" : "border-white/10"
                   } text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                  placeholder="John Doe"
+                  placeholder="Emmanuel Awolu"
                 />
                 {fieldErr.name && (
                   <p className="text-xs text-rose-400 mt-1">{fieldErr.name}</p>

@@ -1,4 +1,3 @@
-// src/pages/Dashboard.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -13,20 +12,49 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ income: 0, expenses: 0, balance: 0 });
 
+  // data
+  const [categories, setCategories] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+
   // modal state
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
 
+  // form state
+  const [categoryName, setCategoryName] = useState("");
+  const [transaction, setTransaction] = useState({
+    description: "",
+    amount: "",
+    categoryId: "",
+  });
+
   useEffect(() => {
     async function fetchData() {
       try {
-        const { data } = await API.get("/auth/me", {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        });
+        const headers = { Authorization: `Bearer ${getToken()}` };
+
+        // user
+        const { data } = await API.get("/auth/me", { headers });
         setUser(data.user);
 
-        // Demo stats
-        setStats({ income: 1500, expenses: 600, balance: 900 });
+        // categories
+        const catRes = await API.get("/categories", { headers });
+        setCategories(catRes.data);
+
+        // transactions
+        const txRes = await API.get("/transactions", { headers });
+        setTransactions(txRes.data);
+
+        // demo stats calculation
+        const income = txRes.data
+          .filter((t) => t.amount > 0)
+          .reduce((a, b) => a + b.amount, 0);
+        const expenses = txRes.data
+          .filter((t) => t.amount < 0)
+          .reduce((a, b) => a + Math.abs(b.amount), 0);
+        const balance = income - expenses;
+
+        setStats({ income, expenses, balance });
       } catch (err) {
         console.error("Auth fetch error:", err);
         navigate("/login", { replace: true });
@@ -40,6 +68,36 @@ export default function Dashboard() {
   function logout() {
     clearToken();
     navigate("/login", { replace: true });
+  }
+
+  async function handleAddCategory(e) {
+    e.preventDefault();
+    try {
+      const headers = { Authorization: `Bearer ${getToken()}` };
+      const res = await API.post(
+        "/categories",
+        { name: categoryName },
+        { headers }
+      );
+      setCategories([...categories, res.data]);
+      setCategoryName("");
+      setShowCategoryModal(false);
+    } catch (err) {
+      console.error("Add category error:", err);
+    }
+  }
+
+  async function handleAddTransaction(e) {
+    e.preventDefault();
+    try {
+      const headers = { Authorization: `Bearer ${getToken()}` };
+      const res = await API.post("/transactions", transaction, { headers });
+      setTransactions([...transactions, res.data]);
+      setTransaction({ description: "", amount: "", categoryId: "" });
+      setShowTransactionModal(false);
+    } catch (err) {
+      console.error("Add transaction error:", err);
+    }
   }
 
   if (loading) {
@@ -144,15 +202,11 @@ export default function Dashboard() {
           >
             <h2 className="text-xl font-semibold mb-4">Categories</h2>
             <ul className="space-y-2 text-slate-300">
-              <li className="flex justify-between">
-                Food <span>$200</span>
-              </li>
-              <li className="flex justify-between">
-                Transport <span>$80</span>
-              </li>
-              <li className="flex justify-between">
-                Shopping <span>$150</span>
-              </li>
+              {categories.map((c) => (
+                <li key={c._id} className="flex justify-between">
+                  {c.name} <span>${c.total || 0}</span>
+                </li>
+              ))}
             </ul>
             <button
               onClick={() => setShowCategoryModal(true)}
@@ -170,16 +224,21 @@ export default function Dashboard() {
           >
             <h2 className="text-xl font-semibold mb-4">Recent Transactions</h2>
             <ul className="space-y-3 text-slate-300">
-              <li className="flex justify-between border-b border-white/5 pb-2">
-                <span>Groceries</span> <span>- $50</span>
-              </li>
-              <li className="flex justify-between border-b border-white/5 pb-2">
-                <span>Salary</span>{" "}
-                <span className="text-emerald-400">+ $1200</span>
-              </li>
-              <li className="flex justify-between">
-                <span>Bus Ticket</span> <span>- $15</span>
-              </li>
+              {transactions.map((t) => (
+                <li
+                  key={t._id}
+                  className="flex justify-between border-b border-white/5 pb-2"
+                >
+                  <span>{t.description}</span>
+                  <span
+                    className={
+                      t.amount > 0 ? "text-emerald-400" : "text-rose-400"
+                    }
+                  >
+                    {t.amount > 0 ? "+" : "-"} ${Math.abs(t.amount)}
+                  </span>
+                </li>
+              ))}
             </ul>
             <button
               onClick={() => setShowTransactionModal(true)}
@@ -215,9 +274,11 @@ export default function Dashboard() {
                   <X size={18} />
                 </button>
               </div>
-              <form className="space-y-4">
+              <form className="space-y-4" onSubmit={handleAddCategory}>
                 <input
                   type="text"
+                  value={categoryName}
+                  onChange={(e) => setCategoryName(e.target.value)}
                   placeholder="Category Name"
                   className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
@@ -257,22 +318,47 @@ export default function Dashboard() {
                   <X size={18} />
                 </button>
               </div>
-              <form className="space-y-4">
+              <form className="space-y-4" onSubmit={handleAddTransaction}>
                 <input
                   type="text"
+                  value={transaction.description}
+                  onChange={(e) =>
+                    setTransaction({
+                      ...transaction,
+                      description: e.target.value,
+                    })
+                  }
                   placeholder="Description"
                   className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
                 <input
                   type="number"
+                  value={transaction.amount}
+                  onChange={(e) =>
+                    setTransaction({
+                      ...transaction,
+                      amount: Number(e.target.value),
+                    })
+                  }
                   placeholder="Amount"
                   className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                <select className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <select
+                  value={transaction.categoryId}
+                  onChange={(e) =>
+                    setTransaction({
+                      ...transaction,
+                      categoryId: e.target.value,
+                    })
+                  }
+                  className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
                   <option value="">Select Category</option>
-                  <option value="food">Food</option>
-                  <option value="transport">Transport</option>
-                  <option value="shopping">Shopping</option>
+                  {categories.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.name}
+                    </option>
+                  ))}
                 </select>
                 <button
                   type="submit"
