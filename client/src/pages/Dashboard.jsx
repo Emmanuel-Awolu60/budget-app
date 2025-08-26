@@ -1,4 +1,3 @@
-// src/pages/Dashboard.jsx
 import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { PlusCircle, Pencil, Trash2 } from "lucide-react";

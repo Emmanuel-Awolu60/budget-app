@@ -1,4 +1,3 @@
-// src/layouts/MainLayout.jsx
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { LogOut, Menu, User, Settings } from "lucide-react";
