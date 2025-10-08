@@ -1,3 +1,4 @@
+// src/pages/Reports.jsx
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -43,85 +44,116 @@ export default function Reports() {
     return { income, expenses, balance: income - expenses };
   }, [transactions]);
 
-  const byCategory = useMemo(() => {
-    const map = {};
-    transactions.forEach((t) => {
-      const id = t.categoryId?._id || t.categoryId || "uncat";
-      const name = t.categoryId?.name || t.category?.name || "Uncategorized";
-      map[id] = map[id] || { name, total: 0 };
-      map[id].total += t.amount;
+  const byCategoryWithBudget = useMemo(() => {
+    const today = new Date();
+    const daysInMonth = new Date(
+      today.getFullYear(),
+      today.getMonth() + 1,
+      0
+    ).getDate();
+    const dayOfMonth = today.getDate();
+    const percentMonth = (dayOfMonth / daysInMonth) * 100;
+
+    return categories.map((cat) => {
+      const spent = transactions
+        .filter(
+          (t) => (t.categoryId?._id || t.categoryId) === cat._id && t.amount < 0
+        )
+        .reduce((a, b) => a + Math.abs(b.amount), 0);
+
+      const budget = cat.budget || 0;
+      const percentSpent = budget > 0 ? (spent / budget) * 100 : 0;
+      const status =
+        budget === 0
+          ? "No budget set"
+          : percentSpent > percentMonth
+            ? "⚠️ Overspending"
+            : "✅ On Track";
+
+      return {
+        name: cat.name,
+        budget,
+        spent,
+        remaining: budget - spent,
+        status,
+      };
     });
-    return Object.values(map).sort(
-      (a, b) => Math.abs(b.total) - Math.abs(a.total)
-    );
-  }, [transactions]);
+  }, [transactions, categories]);
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <Spinner className="text-indigo-400" />
       </div>
     );
   }
 
-  const maxAbs = Math.max(...byCategory.map((c) => Math.abs(c.total)), 1);
-
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl md:text-4xl font-extrabold">Reports</h1>
-      </div>
+    <div className="min-h-screen flex bg-slate-900 text-white">
+      <aside className="hidden md:block " aria-hidden />
+      <main className="flex-1 p-6 md:p-8">
+        <h1 className="text-2xl font-extrabold mb-6">Reports</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="p-5 rounded-2xl bg-slate-800/70 border border-white/10">
-          <p className="text-sm text-slate-400">Income</p>
-          <p className="text-2xl font-bold text-emerald-400">
-            ${totals.income}
-          </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="p-5 rounded-2xl bg-slate-800/70 border border-white/10">
+            <p className="text-sm text-slate-400">Income</p>
+            <p className="text-2xl font-bold text-emerald-400">
+              ₦{totals.income}
+            </p>
+          </div>
+          <div className="p-5 rounded-2xl bg-slate-800/70 border border-white/10">
+            <p className="text-sm text-slate-400">Expenses</p>
+            <p className="text-2xl font-bold text-rose-400">
+              ₦{totals.expenses}
+            </p>
+          </div>
+          <div className="p-5 rounded-2xl bg-slate-800/70 border border-white/10">
+            <p className="text-sm text-slate-400">Balance</p>
+            <p className="text-2xl font-bold text-indigo-300">
+              ₦{totals.balance}
+            </p>
+          </div>
         </div>
-        <div className="p-5 rounded-2xl bg-slate-800/70 border border-white/10">
-          <p className="text-sm text-slate-400">Expenses</p>
-          <p className="text-2xl font-bold text-rose-400">${totals.expenses}</p>
-        </div>
-        <div className="p-5 rounded-2xl bg-slate-800/70 border border-white/10">
-          <p className="text-sm text-slate-400">Balance</p>
-          <p className="text-2xl font-bold text-indigo-300">
-            ${totals.balance}
-          </p>
-        </div>
-      </div>
 
-      <div className="p-6 rounded-2xl bg-slate-800/70 border border-white/10">
-        <h3 className="text-lg font-semibold mb-4">Spending by Category</h3>
-        {byCategory.length === 0 ? (
-          <p className="text-slate-400">No data yet</p>
-        ) : (
-          <ul className="space-y-3">
-            {byCategory.map((c, i) => {
-              const width = Math.round((Math.abs(c.total) / maxAbs) * 100);
-              const isIncome = c.total > 0;
-              return (
+        {/* Budget Burn Rate */}
+        <div className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 mt-8">
+          <h3 className="text-lg font-semibold mb-4">Budget Burn Rate</h3>
+          {byCategoryWithBudget.length === 0 ? (
+            <p className="text-slate-400">No categories with budgets yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {byCategoryWithBudget.map((c, i) => (
                 <li key={i} className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="font-medium truncate">{c.name}</div>
+                    <div className="font-medium">{c.name}</div>
                     <div className="text-xs text-slate-400">
-                      ${c.total.toFixed(2)}
+                      Budget: ₦{c.budget} • Spent: ₦{c.spent}
                     </div>
                   </div>
-                  <div className="w-2/5">
-                    <div className="h-3 rounded bg-white/6 overflow-hidden">
-                      <div
-                        style={{ width: `${width}%` }}
-                        className={`h-3 ${isIncome ? "bg-emerald-400" : "bg-rose-400"}`}
-                      />
+                  <div className="text-right">
+                    <div
+                      className={`font-bold ${
+                        c.status.includes("⚠️")
+                          ? "text-rose-400"
+                          : "text-emerald-400"
+                      }`}
+                    >
+                      {c.status}
                     </div>
+                    {c.budget > 0 && (
+                      <div className="text-xs text-slate-400">
+                        {c.remaining >= 0
+                          ? `Remaining: ₦${c.remaining}`
+                          : `Over by ₦${Math.abs(c.remaining)}`}
+                      </div>
+                    )}
                   </div>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+              ))}
+            </ul>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

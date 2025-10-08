@@ -1,3 +1,4 @@
+// src/pages/Transactions.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,6 +11,7 @@ import ConfirmModal from "../components/ConfirmModal";
 
 export default function Transactions() {
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -23,6 +25,7 @@ export default function Transactions() {
     description: "",
     amount: "",
     categoryId: "",
+    date: "",
   });
 
   const [confirm, setConfirm] = useState({ open: false, id: null, text: "" });
@@ -50,29 +53,33 @@ export default function Transactions() {
   }, [navigate]);
 
   function openAdd() {
-    setForm({ description: "", amount: "", categoryId: "" });
+    setForm({ description: "", amount: "", categoryId: "", date: "" });
     setModal({ open: true, mode: "add", current: null });
   }
-  function openEdit(tx) {
+
+  function openEdit(t) {
     setForm({
-      description: tx.description,
-      amount: tx.amount,
-      categoryId: tx.categoryId?._id || tx.categoryId || "",
+      description: t.description,
+      amount: t.amount,
+      categoryId: t.categoryId?._id || t.categoryId,
+      date: t.date?.slice(0, 10) || "",
     });
-    setModal({ open: true, mode: "edit", current: tx });
+    setModal({ open: true, mode: "edit", current: t });
   }
 
   async function submit(e) {
     e.preventDefault();
-    if (!form.description.trim()) return toast.error("Description required");
-    if (!form.amount && form.amount !== 0)
-      return toast.error("Amount required");
+    if (!form.description.trim() || !form.amount || !form.categoryId) {
+      return toast.error("All fields are required");
+    }
     const payload = {
       description: form.description,
       amount: Number(form.amount),
-      categoryId: form.categoryId || null,
+      categoryId: form.categoryId,
+      date: form.date || new Date().toISOString(),
     };
     const headers = { Authorization: `Bearer ${getToken()}` };
+
     try {
       if (modal.mode === "add") {
         const res = await API.post("/transactions", payload, { headers });
@@ -81,22 +88,21 @@ export default function Transactions() {
       } else {
         const id = modal.current._id;
         const res = await API.put(`/transactions/${id}`, payload, { headers });
-        setTransactions((s) => s.map((t) => (t._id === id ? res.data : t)));
+        setTransactions((s) => s.map((x) => (x._id === id ? res.data : x)));
         toast.success("Transaction updated");
       }
       setModal({ open: false, mode: "add", current: null });
-      setForm({ description: "", amount: "", categoryId: "" });
     } catch (err) {
       console.error(err);
       toast.error("Failed to save transaction");
     }
   }
 
-  function requestRemove(id, description) {
+  function requestRemove(id, desc) {
     setConfirm({
       open: true,
       id,
-      text: `Delete transaction "${description}"? This action cannot be undone.`,
+      text: `Delete transaction "${desc}"?`,
     });
   }
 
@@ -115,80 +121,123 @@ export default function Transactions() {
     }
   }
 
+  // Helper: find category budget impact
+  function getBudgetImpact(tx) {
+    const cat = categories.find(
+      (c) => c._id === (tx.categoryId?._id || tx.categoryId)
+    );
+    if (!cat || !cat.budget) return null;
+
+    const spent = transactions
+      .filter(
+        (t) => (t.categoryId?._id || t.categoryId) === cat._id && t.amount < 0
+      )
+      .reduce((a, b) => a + Math.abs(b.amount), 0);
+
+    return {
+      budget: cat.budget,
+      spent,
+      remaining: cat.budget - spent,
+    };
+  }
+
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <Spinner className="text-indigo-400" />
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl md:text-4xl font-extrabold">Transactions</h1>
-        <button
-          onClick={openAdd}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500"
-        >
-          <PlusCircle size={16} /> Add Transaction
-        </button>
-      </div>
+    <div className="min-h-screen flex bg-slate-900 text-white">
+      <aside className="hidden md:block " aria-hidden />
+      <main className="flex-1 p-6 md:p-8">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-extrabold">Transactions</h1>
+          <button
+            onClick={openAdd}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500"
+          >
+            <PlusCircle size={16} /> Add Transaction
+          </button>
+        </div>
 
-      <div className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 shadow-lg">
-        {transactions.length === 0 ? (
-          <p className="text-slate-400">
-            No transactions yet—add one to begin tracking.
-          </p>
-        ) : (
-          <ul className="divide-y divide-white/6">
-            {transactions.map((t) => (
-              <li
-                key={t._id}
-                className="py-3 flex items-center justify-between"
-              >
-                <div>
-                  <div className="font-medium">{t.description}</div>
-                  <div className="text-xs text-slate-400">
-                    {t.categoryId?.name || "Uncategorized"}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div
-                    className={
-                      t.amount > 0
-                        ? "text-emerald-400 font-medium"
-                        : "text-rose-400 font-medium"
-                    }
+        <div className="p-6 rounded-2xl bg-slate-800/70 border border-white/10 shadow-lg">
+          {transactions.length === 0 ? (
+            <p className="text-slate-400">
+              No transactions yet — add your first one!
+            </p>
+          ) : (
+            <ul className="divide-y divide-white/6">
+              {transactions.map((t) => {
+                const impact = getBudgetImpact(t);
+                return (
+                  <li
+                    key={t._id}
+                    className="flex items-center justify-between py-3"
                   >
-                    {t.amount > 0 ? "+" : "-"} ${Math.abs(t.amount)}
-                  </div>
-                  <button
-                    onClick={() => openEdit(t)}
-                    className="px-2 py-1 bg-blue-500/20 rounded inline-flex items-center gap-1"
-                  >
-                    <Pencil size={14} /> Edit
-                  </button>
-                  <button
-                    onClick={() => requestRemove(t._id, t.description)}
-                    className="px-2 py-1 bg-rose-500/20 rounded inline-flex items-center gap-1"
-                  >
-                    <Trash2 size={14} /> Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                    <div>
+                      <div className="font-medium">{t.description}</div>
+                      <div className="text-xs text-slate-400">
+                        {t.amount < 0 ? (
+                          <span className="text-rose-400">
+                            -₦{Math.abs(t.amount)}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-400">+₦{t.amount}</span>
+                        )}
+                        {" • "}
+                        {t.categoryId?.name ||
+                          categories.find((c) => c._id === t.categoryId)?.name}
+                        {" • "}
+                        {new Date(t.date).toLocaleDateString()}
+                      </div>
+                      {impact && (
+                        <div className="text-xs text-slate-400">
+                          Budget: ₦{impact.budget} • Remaining:{" "}
+                          {impact.remaining >= 0 ? (
+                            <span className="text-emerald-400">
+                              ₦{impact.remaining}
+                            </span>
+                          ) : (
+                            <span className="text-rose-400">
+                              -₦{Math.abs(impact.remaining)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openEdit(t)}
+                        className="px-2 py-1 bg-blue-500/20 rounded inline-flex items-center gap-1"
+                      >
+                        <Pencil size={14} /> Edit
+                      </button>
+                      <button
+                        onClick={() => requestRemove(t._id, t.description)}
+                        className="px-2 py-1 bg-rose-500/20 rounded inline-flex items-center gap-1"
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </main>
 
+      {/* Modal */}
       <AnimatePresence>
         {modal.open && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4"
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
           >
             <motion.div
               initial={{ scale: 0.95 }}
@@ -211,7 +260,6 @@ export default function Transactions() {
                   <X size={18} />
                 </button>
               </div>
-
               <form onSubmit={submit} className="space-y-4">
                 <input
                   type="text"
@@ -224,10 +272,9 @@ export default function Transactions() {
                 />
                 <input
                   type="number"
-                  step="0.01"
                   value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                  placeholder="Amount (negative=expense)"
+                  placeholder="Amount (use - for expenses)"
                   className="w-full px-4 py-3 rounded bg-slate-700 border border-white/10"
                 />
                 <select
@@ -244,11 +291,16 @@ export default function Transactions() {
                     </option>
                   ))}
                 </select>
-
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  className="w-full px-4 py-3 rounded bg-slate-700 border border-white/10"
+                />
                 <div className="flex gap-2">
                   <button
                     type="submit"
-                    className="flex-1 py-2 rounded bg-indigo-600 hover:bg-indigo-500"
+                    className="flex-1 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white"
                   >
                     {modal.mode === "add" ? "Save" : "Update"}
                   </button>
