@@ -279,7 +279,7 @@ export default function Dashboard() {
             <p
               className={`text-2xl md:text-3xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent`}
             >
-              ${stat.value}
+              ₦{stat.value}
             </p>
           </motion.div>
         ))}
@@ -310,13 +310,13 @@ export default function Dashboard() {
                   <div>
                     <div className="font-medium">{c.name}</div>
                     <div className="text-xs text-slate-400">
-                      Budget: ${c.budget || 0} | Spent: ${spent} | Left:{" "}
+                      Budget: ₦{c.budget || 0} | Spent: ₦{spent} | Left:{" "}
                       <span
                         className={
                           remaining < 0 ? "text-rose-400" : "text-emerald-400"
                         }
                       >
-                        ${remaining}
+                        ₦{remaining}
                       </span>
                     </div>
                   </div>
@@ -371,7 +371,7 @@ export default function Dashboard() {
                       t.amount > 0 ? "text-emerald-400" : "text-rose-400"
                     }
                   >
-                    {t.amount > 0 ? "+" : "-"} ${Math.abs(t.amount)}
+                    {t.amount > 0 ? "+" : "-"} ₦{Math.abs(t.amount)}
                   </div>
                   <button
                     onClick={() => openEditTx(t)}

@@ -8,6 +8,7 @@ import API from "../utils/api";
 import { getToken, clearToken } from "../utils/auth";
 import Spinner from "../components/Spinner";
 import ConfirmModal from "../components/ConfirmModal";
+import { TbPigMoney } from "react-icons/tb";
 
 export default function Categories() {
   const navigate = useNavigate();
@@ -176,8 +177,13 @@ export default function Categories() {
                 >
                   <div>
                     <div className="font-medium">{c.name}</div>
-                    <div className="text-xs text-slate-400">
+                    {/* <div className="text-xs text-slate-400">
                       Budget: ${c.budget} | Remaining: ${c.remaining}
+                    </div> */}
+
+                    <div className="text-xs text-slate-400">
+                      Budget: ₦{c.budget?.toLocaleString()} | Remaining: ₦
+                      {c.remaining?.toLocaleString()}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -191,7 +197,7 @@ export default function Categories() {
                       onClick={() => openDeduct(c)}
                       className="px-2 py-1 bg-yellow-500/20 rounded inline-flex items-center gap-1"
                     >
-                      💸 Deduct
+                      <TbPigMoney /> Deduct
                     </button>
                     <button
                       onClick={() => requestRemove(c._id, c.name)}
